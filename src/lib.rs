@@ -1,12 +1,14 @@
-mod thread_pool;
-mod request;
-mod response;
+use clap::{AppSettings, Clap};
 
-pub use thread_pool::ThreadPool;
-pub use request::Request;
 pub use response::Response;
+pub use thread_pool::ThreadPool;
 
-use clap::{Clap, AppSettings};
+mod thread_pool;
+pub mod request;
+mod response;
+pub mod buffer_utils;
+pub mod multipart;
+pub mod path_utils;
 
 pub const ERROR_PATH: &str = "errors";
 pub const HTTP_VERSION: &str = "HTTP/1.1";
@@ -23,4 +25,9 @@ pub struct Opts {
 
     #[clap(default_value = ".")]
     pub directory: String,
+}
+
+pub struct UploadFile<'a> {
+    pub name: String,
+    pub body: &'a[u8]
 }

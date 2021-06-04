@@ -1,20 +1,20 @@
-use std::fs;
 use std::io::prelude::*;
 use std::net::{TcpListener, TcpStream};
-use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
-use http_impl_demo::{Request, Response, ThreadPool, Opts};
-use std::sync::{Arc};
+use clap::Clap;
 
-use clap::{Clap};
+use http_impl_demo::request::{Get, Post, Patch, Delete, Request, RequestHandler};
+use http_impl_demo::{Opts, Response, ThreadPool};
+use std::io;
 
 fn main() {
     let matches: Arc<Opts> = Arc::new(Opts::parse());
 
     let socket = format!("{}:{}", matches.host, matches.port);
 
-    let listener = TcpListener::bind(&socket).unwrap();
-    let pool = ThreadPool::new(16, &matches);
+    let listener = TcpListener::bind(&socket).expect("Could not bind to socket");
+    let pool = ThreadPool::new(16, matches.clone());
 
     println!("Serving on http://{}", socket);
 
@@ -22,59 +22,44 @@ fn main() {
         let stream = stream.unwrap();
 
         pool.execute(|opts| {
-            handle_connection(stream, opts);
+            handle_connection(stream, opts).unwrap();
         });
     }
 
     println!("Shutting down.");
 }
 
-fn handle_connection(mut stream: TcpStream, opts: &Opts) {
-    const BUFFER_SIZE: usize = 8096;
+fn handle_connection(mut stream: TcpStream, opts: Arc<Opts>) -> Result<(), io::Error> {
+    const BUFFER_SIZE: usize = 1_048_576; // 1MB
     let mut buffer = [0; BUFFER_SIZE];
 
-    stream.read(&mut buffer).unwrap();
+    stream.read(&mut buffer)?;
 
-    let req = String::from_utf8_lossy(
-        &buffer[0..buffer.iter().position(|&b| b == 0).unwrap_or(BUFFER_SIZE)],
-    );
+    let req = Request::from_bytes(&buffer);
 
-    let req = Request::from_string(&req);
-
-    let response = match req.status_line.method {
-        "GET" => get(&req, opts),
-        _ => Response::error(501),
+    let response = match match req.status_line.method {
+        "GET" => Get::get_response(&req, opts),
+        "POST" => Post::get_response(&req, opts),
+        "PATCH" => Patch::get_response(&req, opts),
+        "DELETE" => Delete::get_response(&req, opts),
+        _ => Ok(Response::error(
+            501,
+            Some(format!("Method {} is not supported", req.status_line.method).as_str()),
+        )),
+    } {
+        Ok(res) => res,
+        Err(err) => {
+            println!("ERR: {}", err);
+            Response::error(500, Some(err.to_string().as_str()))
+        }
     };
 
-    stream.write(response.to_bytes().as_slice()).unwrap();
-    stream.flush().unwrap();
+    stream.write(response.to_bytes().as_slice())?;
+    stream.flush()?;
 
     log(&req, &response);
-}
 
-/// Takes a GET `request` and returns a `response`.
-fn get<'a>(request: &Request, opts: &Opts) -> Response<'a> {
-    let resource = if request.status_line.uri != "/" {
-        request.status_line.uri
-    } else {
-        "/index.html"
-    };
-
-    let resource_path = format!("{}{}", opts.directory, resource);
-    let path = Path::new(resource_path.as_str());
-
-    let path: PathBuf = if path.is_dir() {
-        path.join("index.html")
-    } else {
-        path.to_path_buf()
-    };
-
-    if path.exists() {
-        let content = fs::read(&path).unwrap();
-        Response::ok(path, content)
-    } else {
-        Response::error(404)
-    }
+    Ok(())
 }
 
 fn log(req: &Request, res: &Response) {

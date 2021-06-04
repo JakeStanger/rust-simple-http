@@ -2,11 +2,11 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use crate::Opts;
 
-type Job = Box<dyn FnOnce(&Opts) + Send + 'static>;
+type Job = Box<dyn FnOnce(Arc<Opts>) + Send + 'static>;
 
 struct NewJob {
     job: Job,
-    opts: &'static Opts
+    opts: Arc<Opts>
 }
 
 enum Message {
@@ -17,7 +17,7 @@ enum Message {
 pub struct ThreadPool {
     workers: Vec<Worker>,
     sender: mpsc::Sender<Message>,
-    opts: &'static Opts
+    opts: Arc<Opts>
 }
 
 impl ThreadPool {
@@ -28,7 +28,7 @@ impl ThreadPool {
     /// # Panics
     ///
     /// The `new` function will panic if the size is zero.
-    pub fn new(size: usize, opts: &'static Opts) -> ThreadPool {
+    pub fn new(size: usize, opts: Arc<Opts>) -> ThreadPool {
         assert!(size > 0);
 
         let (sender, receiver) = mpsc::channel();
@@ -47,10 +47,10 @@ impl ThreadPool {
     /// The closure will be executed on the first thread to accept the job.
     pub fn execute<F>(&self, f: F)
     where
-        F: FnOnce(&Opts) + Send + 'static,
+        F: FnOnce(Arc<Opts>) + Send + 'static,
     {
         let closure = Box::new(f);
-        let job = NewJob{ job: closure, opts: self.opts};
+        let job = NewJob{ job: closure, opts: self.opts.clone()};
         self.sender.send(Message::NewJob(job)).unwrap();
     }
 }

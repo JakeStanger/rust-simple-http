@@ -1,10 +1,9 @@
 use std::collections::HashMap;
-use std::fs;
-use std::path::{PathBuf, Path};
 
 use chrono::Local;
 
-use crate::{ERROR_PATH, HTTP_VERSION};
+use crate::{HTTP_VERSION};
+use std::path::PathBuf;
 
 pub struct Response<'a> {
     pub http_version: &'a str,
@@ -41,6 +40,7 @@ impl Response<'_> {
         response
     }
 
+    /// Gets a map of base response headers
     pub fn get_headers<'a>(content_length: usize, path: &str) -> HashMap<&'a str, String> {
         let mut headers = HashMap::new();
 
@@ -51,14 +51,18 @@ impl Response<'_> {
         headers.insert(
             "Content-Type",
             mime_guess::from_path(path)
-                .first_or_text_plain()
+                .first_or("text/html".parse().unwrap())
                 .to_string(),
         );
 
         headers
     }
 
-    pub fn ok<'a>(path: PathBuf, content: Vec<u8>) -> Response<'a> {
+    /// Returns an HTTP OK response
+    pub fn ok<'a>(code: u16, path: PathBuf, content: Vec<u8>) -> Response<'a> {
+        // ok responses should always have a 200-code
+        assert!(code >= 200 && code <= 300);
+
         const STATUS_CODE: u16 = 200;
 
         Response {
@@ -73,8 +77,8 @@ impl Response<'_> {
     }
 
     /// Returns an error response for the given error code.
-    pub fn error<'a>(status_code: u16) -> Response<'a> {
-        let content = Response::load_error_html(status_code);
+    pub fn error<'a>(status_code: u16, details: Option<&str>) -> Response<'a> {
+        let content = Response::get_error_html(status_code, details);
 
         Response {
             http_version: HTTP_VERSION,
@@ -88,16 +92,32 @@ impl Response<'_> {
     }
 
     /// Loads the HTML page for the given error code
-    fn load_error_html(code: u16) -> Vec<u8> {
-        let resource_path = format!("{}/{}.html", ERROR_PATH, code);
-        let path = Path::new(resource_path.as_str());
-        fs::read(path).unwrap()
+    fn get_error_html(code: u16, details: Option<&str>) -> Vec<u8> {
+        format!(
+            "<!DOCTYPE html> \
+            <html lang=\"en\"> \
+            <head> \
+                <meta charset=\"UTF-8\"> \
+                <title>{code} | {reason_phrase}</title> \
+            </head> \
+            <body> \
+                <h1>{reason_phrase}</h1> \
+                <p>{details}</p> \
+            </body> \
+            </html>",
+            code = code,
+            reason_phrase = Response::reason_phrase(code),
+            details = details.unwrap_or("")
+        )
+        .as_bytes()
+        .to_vec()
     }
 
     /// Gets the reason phrase string for an error code
     pub fn reason_phrase<'a>(code: u16) -> &'a str {
         match code {
             200 => "OK",
+            400 => "BAD REQUEST",
             404 => "NOT FOUND",
             500 => "INTERNAL SERVER ERROR",
             501 => "NOT IMPLEMENTED",
