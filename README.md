@@ -3,8 +3,11 @@
 > This should absolutely not be used in any environment anywhere! 
 > It's not at all secure, probably very unstable, and some of its logic is lacking in logic.
 
-A simple HTTP server written in Rust purely as a learning exercise/experiment. 
+A simple multi-threaded HTTP server written in Rust purely as a learning exercise/experiment. 
 It fully implements CRUD with files.
+
+Based on the code from the below tutorial:
+<https://doc.rust-lang.org/book/ch20-00-final-project-a-web-server.html>
 
 This implements:
 - GET for displaying/downloading files
