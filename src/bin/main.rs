@@ -14,7 +14,7 @@ fn main() {
     let socket = format!("{}:{}", matches.host, matches.port);
 
     let listener = TcpListener::bind(&socket).expect("Could not bind to socket");
-    let pool = ThreadPool::new(16, matches.clone());
+    let pool = ThreadPool::new(num_cpus::get(), matches.clone());
 
     println!("Serving on http://{}", socket);
 
